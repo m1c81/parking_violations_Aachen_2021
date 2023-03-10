@@ -1,0 +1,115 @@
+---
+title: " Parking violations Aachen"
+output: html_notebook
+---
+
+This neat little project has the focus on an analysis fines for parking violations in the city of Aachen (Germany) in the year 2023. <br>
+Dataset can be found [here](https://www.govdata.de/web/guest/suchen/-/details/verwarn-und-bussgelder-ruhender-verkehr-parkverstosse-2021-der-stadt-aachen). <br>
+<strong>In this analysis German and Foreign describes the country of manufacturing and not what is written on the license plate.</strong> <br>
+The downloaded dataset was a little cleaned and transformed in Excel. <br>
+The “BestandMin.csv” is a csv which shows the car manufacturing origin in % in 2021. It was generated from   a table which can be found [here](https://www.kba.de/DE/Statistik/Fahrzeuge/Bestand/MarkenHersteller/2022/2022_b_herst_zeitreihen.html).<br>
+The “FarbenKFZ.csv” shows the estimated color distribution. It was calculated in Excel from the assumption that there were no big trend changes in the last ten years. Table can be found [here](https://www.kba.de/DE/Statistik/Fahrzeuge/Neuzulassungen/Farbe/2022/2022_n_farbe_zeitreihe.html).
+
+## Assumption
+
+For this analysis it was assumed that the distribution of colors and manufacturers of cars in the city of Aachen are not deviate from that of Germany in total.   
+ 
+Load the datasets.
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+
+X2021 <- read_csv("2021-parkverstosse.csv", 
+                                locale = locale(encoding = "WINDOWS-1252"))
+
+BestandMin <- read.csv("BestandMin.csv")
+
+FarbenKFZ <- read.csv("FarbenKFZ.csv")
+```
+
+## Data cleaning and formating.
+
+
+```{r}
+Cars <- subset(X2021, Fabrikat != "Unbekannt") %>% 
+  subset(!is.na(Fabrikat)) %>% 
+  subset(!is.na(Farbe)) %>% 
+  subset(!is.na(`Verwarn-_Bußgeld(b)`)) %>% 
+  subset(`Verwarn-_Bußgeld(b)`<10000)
+  
+Cars <- Cars %>% 
+  count(Fabrikat) %>% 
+  filter(n>400) 
+
+CarsGer <- subset(Cars, Fabrikat=="Audi" | 
+                    Fabrikat == "BMW" |
+                    Fabrikat == "Daimler" |
+                    Fabrikat == "Opel" |
+                    Fabrikat == "Porsche" |
+                    Fabrikat == "VW")
+
+CarsGerVSforeign <- data.frame(origin = c("german","others","german","others"),
+                               type = c("fine","fine","exist","exist"),
+                              n = c(100*sum(CarsGer$n)/sum(Cars$n),
+                                    100*(sum(Cars$n)-sum(CarsGer$n))/sum(Cars$n),
+                                    BestandMin$n))
+
+Colors <- X2021 %>% 
+  count(Farbe) %>% 
+  filter(n>100)
+
+Colors <- bind_cols(Colors,color_eng=c("beige","blue","brown","yellow","yellow","gold","gray","green",
+                                              "pink","lightblue","orange","red","black","snow",
+                      
+                                        "blue","violet","white","darkgrey"))
+                                        
+
+ColorsSimplyfied <- subset(Colors, Farbe == 'Blau' |
+                             Farbe == 'Weiß' |
+                             Farbe == 'Rot' |
+                             Farbe == 'Schwarz' |
+                             Farbe == 'Grau')
+
+ColorsSimplyfied <- ColorsSimplyfied %>% 
+  add_row(Farbe = NA , n=sum(Colors$n)-sum(ColorsSimplyfied$n))
+
+ColorsSimplyfied <- ColorsSimplyfied %>% 
+  mutate(percent = 100*n/sum(n))
+```
+
+```{r}
+print(ColorsSimplyfied)
+```
+```{r}
+print(FarbenKFZ)
+```
+
+
+
+And finally the plots. 
+
+```{r}
+Cars %>% 
+  ggplot(aes(x=n,y=Fabrikat))+
+  geom_bar(stat = "identity")+
+  scale_y_discrete(limit=rev)
+
+CarsGerVSforeign %>%
+  ggplot(aes(x=type,y=n,fill=origin))+
+  geom_bar(stat = "identity",position = "dodge")
+
+
+Colors %>%
+  ggplot(aes(x=Farbe,y=n,fill=Farbe))+
+  geom_bar(stat = "identity")+
+  theme(axis.text.x = element_text(angle = 55, hjust = 1))+
+  scale_fill_manual(values = Colors$color_eng)
+```
+
+## Conclusion
+
+The color distribution shows nothing out of the ordinary, the big difference on grey could be due the different definition of the color grey which includes colors as silver. <br>
+While there are 63% German and 37% foreign cars. Fined were only 58% Cars of German origin and 42% of a foreign one.  
+About the cause of this finding I could only speculate, maybe the data is insufficient or the car structure of Aachen City differs highly from the average Germany? 
